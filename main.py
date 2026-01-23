@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--hidden_dim", type=int, default=128, help="LSTM hidden dimension")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
     parser.add_argument("--epochs", type=int, default=20, help="Number of epochs")
-    parser.add_argument("--n_critic", type=int, default=3, help="Number of critic updates per generator update")
+    parser.add_argument("--n_critic", type=int, default=5, help="Number of critic updates per generator update")
     parser.add_argument("--lambda_gp", type=int, default=10, help="Gradient penalty coefficient")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default="wgangp_four_node_sequences_logistic_22500.csv", help="Output filename")
