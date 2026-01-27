@@ -7,35 +7,39 @@ class LSTMGeneratorBranch(nn.Module):
         self.seq_length = seq_length
         self.hidden_dim = hidden_dim
         
-        # Initial state generator: maps noise to initial h and c
-        # Each branch gets its own seed generator
+        # SIREN-style Sine Initialization for high-frequency chaotic mapping
         self.init_h = nn.Linear(noise_slice_dim, hidden_dim)
         self.init_c = nn.Linear(noise_slice_dim, hidden_dim)
         
-        # LSTM layer (deeper for complexity)
-        # Note: We don't feed noise at every step, just the initial state
-        self.lstm = nn.LSTM(1, hidden_dim, num_layers=2, batch_first=True, dropout=0.1)
+        # LSTM layer (Using 3 layers for more complex internal state dynamics)
+        self.lstm = nn.LSTM(1, hidden_dim, num_layers=3, batch_first=True, dropout=0.1)
         
-        self.fc_out = nn.Sequential(
-            nn.Linear(hidden_dim, 1),
-            nn.Tanh() # Tanh helps centered chaotic trajectories
+        # ELU is better than ReLU/LeakyReLU for preserving fluctuations in chaos
+        self.fc_delta = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ELU(),
+            nn.Linear(hidden_dim // 2, 1)
         )
-        self.leaky_relu = nn.LeakyReLU(0.2)
 
     def forward(self, z_slice):
         batch_size = z_slice.size(0)
         
-        # Initialize h and c using the noise "seed"
-        h0 = self.leaky_relu(self.init_h(z_slice)).unsqueeze(0).repeat(2, 1, 1).contiguous()
-        c0 = self.leaky_relu(self.init_c(z_slice)).unsqueeze(0).repeat(2, 1, 1).contiguous()
+        # Sine-based seeding: Maps static noise to a high-frequency initial state
+        # Multiplying by 30 is a standard SIREN hyperparameter for capturing fine details
+        h0 = torch.sin(30 * self.init_h(z_slice)).unsqueeze(0).repeat(3, 1, 1).contiguous()
+        c0 = torch.sin(30 * self.init_c(z_slice)).unsqueeze(0).repeat(3, 1, 1).contiguous()
         
-        # Using .new_zeros() is faster and stays on the same device as z_slice
+        # Integrate dummy zeros to evolve the state
         dummy_input = z_slice.new_zeros(batch_size, self.seq_length, 1)
-        
         lstm_out, _ = self.lstm(dummy_input, (h0, c0))
         
-        out = self.fc_out(lstm_out)
-        return out.squeeze(-1)
+        # Residual Delta Output scaled by 0.1 for stability
+        deltas = self.fc_delta(lstm_out).squeeze(-1) * 0.1
+        
+        # Integration (Step-by-step accumulation)
+        seq = torch.cumsum(deltas, dim=1)
+        
+        return seq
 
 class LSTMGenerator(nn.Module):
     def __init__(self, noise_dim=64, hidden_dim=128, seq_length=192):
@@ -43,7 +47,6 @@ class LSTMGenerator(nn.Module):
         self.seq_length = seq_length
         self.noise_dim = noise_dim
         
-        # Split noise_dim into 4 slices for 4-node independence
         slice_dim = noise_dim // 4
         
         self.branch1 = LSTMGeneratorBranch(slice_dim, hidden_dim, seq_length)
@@ -51,14 +54,10 @@ class LSTMGenerator(nn.Module):
         self.branch3 = LSTMGeneratorBranch(slice_dim, hidden_dim, seq_length)
         self.branch4 = LSTMGeneratorBranch(slice_dim, hidden_dim, seq_length)
         
-        # Step 1: Cross-Node Interaction (Coupled Dynamics)
-        # 1D Convolution to mix dynamics between nodes across time
-        self.coupling = nn.Conv1d(4, 4, kernel_size=3, padding=1, padding_mode='circular')
-        
-        self.bn = nn.BatchNorm1d(4)
+        # REMOVED Coupling (Conv1d) and BatchNorm here as they smooth out the chaos.
+        # Direct stacking preserve maximum entropy per channel.
 
     def forward(self, z):
-        # Slice noise for each branch
         s = self.noise_dim // 4
         out1 = self.branch1(z[:, 0:s])
         out2 = self.branch2(z[:, s:2*s])
@@ -68,45 +67,39 @@ class LSTMGenerator(nn.Module):
         # Stack into (Batch, 4, Seq_Length)
         stacked = torch.stack([out1, out2, out3, out4], dim=1)
         
-        # Apply Cross-Node Coupling to increase complexity/randomness
-        coupled = self.coupling(stacked)
-        
-        # Batch normalization across the 4 nodes
-        normalized = self.bn(coupled)
-        
-        # Rescale to [0, 1]
-        return torch.sigmoid(normalized)
+        # Global scaling to [0, 1] for images/NIST compatibility
+        # Using Sigmoid directly on the integrated signal
+        return torch.sigmoid(stacked)
 
 class LSTMCritic(nn.Module):
     def __init__(self, hidden_dim=128):
         super(LSTMCritic, self).__init__()
-        # input_size=4 because we evaluate 4 chaotic nodes simultaneously
+        # 2 layers are sufficient and much faster for the backward pass
         self.lstm_raw = nn.LSTM(4, hidden_dim, num_layers=2, batch_first=True, dropout=0.1)
         self.lstm_diff = nn.LSTM(4, hidden_dim, num_layers=1, batch_first=True)
         
+        # Spectral Normalization on the FC layers resolves the hang issues 
+        # and provides WGAN stability without needing the expensive Gradient Penalty.
         self.fc = nn.Sequential(
-            nn.Linear(hidden_dim * 4, hidden_dim),
+            nn.utils.spectral_norm(nn.Linear(hidden_dim * 4, hidden_dim)),
             nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim, 1)
+            nn.utils.spectral_norm(nn.Linear(hidden_dim, 1))
         )
 
     def forward(self, seq):
         # seq shape: (batch_size, 4, seq_length)
-        # Convert to (batch_size, seq_length, 4) for LSTM processing
         seq = seq.permute(0, 2, 1)
         
-        # 1. Raw features
+        # 1. Raw Stream
         raw_out, _ = self.lstm_raw(seq)
         avg_raw = torch.mean(raw_out, dim=1)
         max_raw, _ = torch.max(raw_out, dim=1)
         
-        # 2. Differential features (Chaos sensitivity)
+        # 2. Differential Stream (Penalizes smoothness)
         diff = seq[:, 1:, :] - seq[:, :-1, :]
         diff_out, _ = self.lstm_diff(diff)
         avg_diff = torch.mean(diff_out, dim=1)
         max_diff, _ = torch.max(diff_out, dim=1)
         
-        # Combine everything
         combined = torch.cat([avg_raw, max_raw, avg_diff, max_diff], dim=1)
-        
         return self.fc(combined)

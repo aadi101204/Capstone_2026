@@ -6,12 +6,12 @@ import pandas as pd
 import numpy as np
 import os
 
-from src.utils import set_seed, gradient_penalty
+from src.utils import set_seed
 from src.dataset import ImageChaoticDataset
 from src.models import LSTMGenerator, LSTMCritic
 
 def main():
-    parser = argparse.ArgumentParser(description="WGAN-GP for Chaotic Sequence Generation")
+    parser = argparse.ArgumentParser(description="WGAN-SN for Chaotic Sequence Generation")
     parser.add_argument("--data_path", type=str, default="./KIIT-MiTA/train/images", help="Path to images")
     parser.add_argument("--image_size", type=int, default=8, help="Image resize dimension")
     parser.add_argument("--noise_dim", type=int, default=64, help="Noise dimension for generator")
@@ -19,7 +19,6 @@ def main():
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
     parser.add_argument("--epochs", type=int, default=20, help="Number of epochs")
     parser.add_argument("--n_critic", type=int, default=5, help="Number of critic updates per generator update")
-    parser.add_argument("--lambda_gp", type=int, default=10, help="Gradient penalty coefficient")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", type=str, default="wgangp_four_node_sequences_logistic_22500.csv", help="Output filename")
     parser.add_argument("--map_type", type=str, default="logistic", choices=["logistic", "tent", "cosine"], help="Chaotic map type")
@@ -31,9 +30,10 @@ def main():
     print(f"Using device: {device}")
 
     # Disable CuDNN to support double backpropagation for LSTMs (required for WGAN-GP Gradient Penalty)
+    # Spectral Normalization (SN) handles stability, so we can re-enable CuDNN for speed
     if device.type == 'cuda':
-        torch.backends.cudnn.enabled = False
-        print("CuDNN disabled to support Gradient Penalty with LSTMs.")
+        torch.backends.cudnn.enabled = True
+        print("Using WGAN-SN (CuDNN Enabled). Gradient Penalty removed to fix performance hangs.")
 
     image_size = (args.image_size, args.image_size)
     seq_length = args.image_size * args.image_size * 3 # H * W * C (assuming 3 channels)
@@ -78,9 +78,9 @@ def main():
 
                 outputs_real = C(real_seq)
                 outputs_fake = C(fake_seq.detach())
-                gp = gradient_penalty(C, real_seq, fake_seq.detach(), device)
 
-                loss_C = -(torch.mean(outputs_real) - torch.mean(outputs_fake)) + args.lambda_gp * gp
+                # Standard WGAN Loss (Stability provided by Spectral Norm in models.py)
+                loss_C = -(torch.mean(outputs_real) - torch.mean(outputs_fake))
 
                 opt_C.zero_grad()
                 loss_C.backward()
