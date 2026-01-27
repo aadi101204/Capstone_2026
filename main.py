@@ -30,6 +30,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # Disable CuDNN to support double backpropagation for LSTMs (required for WGAN-GP Gradient Penalty)
+    if device.type == 'cuda':
+        torch.backends.cudnn.enabled = False
+        print("CuDNN disabled to support Gradient Penalty with LSTMs.")
+
     image_size = (args.image_size, args.image_size)
     seq_length = args.image_size * args.image_size * 3 # H * W * C (assuming 3 channels)
     
@@ -69,7 +74,7 @@ def main():
             # Train Critic
             for _ in range(args.n_critic):
                 noise = torch.randn(batch_size, args.noise_dim).to(device)
-                fake_seq = G(noise).unsqueeze(-1)
+                fake_seq = G(noise)
 
                 outputs_real = C(real_seq)
                 outputs_fake = C(fake_seq.detach())
@@ -83,7 +88,7 @@ def main():
 
             # Train Generator
             noise = torch.randn(batch_size, args.noise_dim).to(device)
-            fake_seq = G(noise).unsqueeze(-1)
+            fake_seq = G(noise)
             outputs_fake = C(fake_seq)
 
             loss_G = -torch.mean(outputs_fake)
@@ -105,14 +110,19 @@ def main():
 
     for i in range(num_sequences):
         noise = torch.randn(1, args.noise_dim).to(device)
+        # gen shape: (1, 4, L) -> flatten to (4 * L)
         seq = G(noise).detach().cpu().numpy().flatten()
-        seq = (seq - seq.min()) / (seq.max() - seq.min() + 1e-8)
         all_sequences.append(seq)
 
-    df = pd.DataFrame(all_sequences, columns=[f"Step_{i}" for i in range(seq_length)])
+    # Header for multi-node: Node0_Step0, ..., Node3_Step191
+    columns = []
+    for n in range(4):
+        columns.extend([f"Node{n}_Step{j}" for j in range(seq_length)])
+    
+    df = pd.DataFrame(all_sequences, columns=columns)
     df.index.name = "Sequence_ID"
     df.to_csv(args.output)
-    print(f"\nSaved {num_sequences} generated sequences to {args.output}")
+    print(f"\nSaved {num_sequences} generated multi-node sequences to {args.output}")
 
 if __name__ == "__main__":
     main()

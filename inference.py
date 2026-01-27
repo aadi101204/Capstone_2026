@@ -46,11 +46,19 @@ def main():
     print(f"Generating {args.num_sequences} sequences...")
     for i in range(args.num_sequences):
         noise = torch.randn(1, args.noise_dim).to(device)
+        # gen shape: (1, 4, L)
         seq = G(noise).detach().cpu().numpy().flatten()
-        seq = (seq - seq.min()) / (seq.max() - seq.min() + 1e-8)
         all_sequences.append(seq)
         
-    df = pd.DataFrame(all_sequences, columns=[f"Step_{i}" for i in range(args.seq_length)])
+    columns = []
+    # Assuming the sequence was trained with 4 nodes
+    for n in range(4):
+        # We need to know seq_length per node.
+        # G(noise) returns (1, 4, L), so flattened seq has length 4*L
+        L = len(seq) // 4
+        columns.extend([f"Node{n}_Step{j}" for j in range(L)])
+
+    df = pd.DataFrame(all_sequences, columns=columns)
     df.index.name = "Sequence_ID"
     df.to_csv(args.output)
     print(f"Saved to {args.output}")

@@ -13,6 +13,9 @@ def set_seed(seed=42):
 def gradient_penalty(critic, real, fake, device="cpu"):
     batch_size = real.size(0)
     epsilon = torch.rand(batch_size, 1, 1, device=device)
+    if real.dim() == 4: # Handling cases with extra channel dims
+        epsilon = torch.rand(batch_size, 1, 1, 1, device=device)
+    
     interpolated = epsilon * real + (1 - epsilon) * fake
     interpolated.requires_grad_(True)
 
@@ -25,6 +28,7 @@ def gradient_penalty(critic, real, fake, device="cpu"):
         retain_graph=True,
         only_inputs=True
     )[0]
-    gradients = gradients.view(batch_size, -1)
+    # Use reshape instead of view to handle non-contiguous tensors from Critic permutations
+    gradients = gradients.reshape(batch_size, -1)
     gp = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
     return gp

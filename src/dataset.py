@@ -57,8 +57,6 @@ class ImageChaoticDataset(Dataset):
         for c in corners:
             x0 = np.clip(c.item(), 1e-6, 1-1e-6)
             seq_data = sequence(r=self.r, x0=x0, length=self.seq_length, map_type=self.map_type)
-            seqs.append(torch.tensor(seq_data, dtype=torch.float32).unsqueeze(-1))
+            seqs.append(torch.tensor(seq_data, dtype=torch.float32))
 
-        seqs = torch.stack(seqs, dim=0)
-        merged = seqs.mean(dim=0)
-        return merged
+        return torch.stack(seqs, dim=0)
