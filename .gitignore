@@ -10,23 +10,23 @@ __pycache__/
 *.pyd
 .Python
 
-# ── Dataset (large; not needed in repo) ───────────────────────
+# ── Dataset (large; proprietary KIIT-MiTA images — not distributed) ──
 KIIT-MiTA/
 TrainSet/
+Dataset/
+
+# ── All generated output (fully regeneratable) ────────────────
+FinalResults/
 
 # ── Generated sequences (large CSV output from training) ──────
 sequence_file.csv
 wgangp_four_node_sequences*.csv
 
-# ── Encryption output (regeneratable from code + sequence) ────
-Encrypted_Results/scrambled/
-Encrypted_Results/encrypted/
-Encrypted_Results/histograms/
-Encrypted_Results/images/
-Encrypted_Results/plots/
-Encrypted_Results/encryption_metrics.csv
-
-# ── Loose output images / videos at repo root ─────────────────
+# ── Trained model weights (large binary; not distributed — train locally) ──
+generator.pth
+*.pth
+*.pt
+*.ckpt
 encrypted.png
 encrypted_output.mp4
 sample.mp4
@@ -34,11 +34,6 @@ decryption_result.png
 decrypted_*.png
 encryption_results.png
 
-# ── Trained model weights (large binary; store in releases/LFS) 
-generator.pth
-*.pth
-*.pt
-*.ckpt
 
 # ── Logs / notebooks checkpoints ─────────────────────────────
 WGAN_2026.txt

@@ -12,7 +12,7 @@ from src.models import LSTMGenerator, LSTMCritic
 
 def main():
     parser = argparse.ArgumentParser(description="WGAN-SN for Chaotic Sequence Generation")
-    parser.add_argument("--data_path", type=str, default="./KIIT-MiTA/train/images", help="Path to images")
+    parser.add_argument("--data_path", type=str, default="./Dataset", help="Path to images")
     parser.add_argument("--image_size", type=int, default=8, help="Image resize dimension")
     parser.add_argument("--noise_dim", type=int, default=64, help="Noise dimension for generator")
     parser.add_argument("--hidden_dim", type=int, default=128, help="LSTM hidden dimension")

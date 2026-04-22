@@ -186,10 +186,10 @@ def run_bulk_encryption(dataset_path, seq_file, output_root, limit=10):
 if __name__ == "__main__":
     seq_file = "sequence_file.csv"   
     # Dataset path from KIIT-MiTA
-    dataset_dir = "./KIIT-MiTA/test/images/" 
-    output_dir = "./Encrypted_Results"
+    dataset_dir = "./Dataset" 
+    output_dir = "./FinalResults"
     
     # Run through the folder (limit to 10 for quick verification, set to None for all)
-    run_bulk_encryption(dataset_dir, seq_file, output_dir, limit=10)
+    run_bulk_encryption(dataset_dir, seq_file, output_dir, limit=20)
 
 
