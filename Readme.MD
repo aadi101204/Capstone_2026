@@ -259,4 +259,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT License](LICENSE) © 2026 Aditya Arora
+[MIT License](LICENSE) © 2026 Aaditya VS
+
